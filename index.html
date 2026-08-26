@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Centrifuge Controller | Minimalist Dashboard</title>
+    <meta name="description" content="High-precision minimalist centrifuge controller dashboard with real-time RPM tracking, physical safety interlock monitoring, and emergency brake systems.">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- App Styles -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation Header -->
+        <header class="app-header">
+            <div class="brand">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-atom fa-spin-pulse"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>CENTRIFUGE <span>PRO</span></h1>
+                    <p class="sub">College Prototype Controller</p>
+                </div>
+            </div>
+
+            <!-- Connection & Mode Controls -->
+            <div class="header-actions">
+                <div class="comm-selector">
+                    <label for="comm-mode"><i class="fa-solid fa-network-wired"></i> Link:</label>
+                    <select id="comm-mode">
+                        <option value="dual" selected>Dual Link (Wi-Fi + USB Auto Failover)</option>
+                        <option value="sim">Simulation Mode (Offline Test)</option>
+                        <option value="serial">Web Serial (USB Only)</option>
+                        <option value="ws">ESP32 Wi-Fi (Wireless Only)</option>
+                    </select>
+                </div>
+
+                <button id="btn-connect" class="btn btn-secondary btn-sm">
+                    <i class="fa-solid fa-plug"></i> Connect
+                </button>
+
+                <div class="status-pill" id="pill-conn">
+                    <span class="status-dot disconnected"></span>
+                    <span id="txt-conn">Disconnected</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Safety Banner (Triggered on Lid Open or Emergency) -->
+        <div id="safety-banner" class="safety-banner hidden">
+            <div class="safety-content">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span id="safety-msg">SAFETY INTERLOCK: Lid is OPEN. Motor operation is HARDWARE DISABLED.</span>
+            </div>
+            <button id="btn-lid-toggle-sim" class="btn btn-xs btn-outline">
+                <i class="fa-solid fa-lock"></i> Toggle Lid (Sim)
+            </button>
+        </div>
+
+        <!-- Main Grid Layout -->
+        <main class="dashboard-grid">
+            <!-- Left Panel: Readouts & Live Chart -->
+            <section class="card readout-section">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-gauge-high"></i> Live Telemetry</h2>
+                    <div class="badge-group">
+                        <div class="badge" id="badge-lid">
+                            <i class="fa-solid fa-lock"></i> Lid: <strong id="lbl-lid">CLOSED</strong>
+                        </div>
+                        <div class="badge" id="badge-motor">
+                            <i class="fa-solid fa-circle-play"></i> Status: <strong id="lbl-status">IDLE</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Digital Tachometer Gauge -->
+                <div class="gauge-container">
+                    <div class="speed-readout">
+                        <div class="rpm-number-container">
+                            <span id="current-rpm">0</span>
+                            <span class="unit">RPM</span>
+                        </div>
+                        <div class="target-indicator">
+                            Target: <span id="target-rpm-disp">3500</span> RPM
+                        </div>
+                    </div>
+
+                    <!-- Visual Speed Meter Bar -->
+                    <div class="meter-bar-wrapper">
+                        <div class="meter-bar-fill" id="meter-fill" style="width: 0%;"></div>
+                        <div class="meter-limit" style="left: 100%;"><span>10k</span></div>
+                    </div>
+                </div>
+
+                <!-- Real-Time RPM Graph -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <span>RPM vs Time (Real-Time)</span>
+                        <span class="live-tag"><span class="pulse"></span> LIVE</span>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <canvas id="rpmChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Controls & Timers -->
+            <section class="controls-column">
+                <!-- Target RPM Controller -->
+                <div class="card speed-control-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-sliders"></i> Speed Setting (Max 10,000 RPM)</h2>
+                    </div>
+
+                    <div class="rpm-input-group">
+                        <div class="number-stepper">
+                            <input type="number" id="input-rpm" min="0" max="10000" step="50" value="3500">
+                            <span class="unit">RPM</span>
+                        </div>
+                        <div class="quick-adjust-grid">
+                            <button class="btn btn-sm btn-dark" data-adj="-100">-100</button>
+                            <button class="btn btn-sm btn-dark" data-adj="-50">-50</button>
+                            <button class="btn btn-sm btn-dark" data-adj="+50">+50</button>
+                            <button class="btn btn-sm btn-dark" data-adj="+100">+100</button>
+                        </div>
+                    </div>
+
+                    <!-- Presets -->
+                    <div class="presets-row">
+                        <span class="label">Presets:</span>
+                        <button class="btn btn-xs btn-chip" data-rpm="1000">1,000</button>
+                        <button class="btn btn-xs btn-chip" data-rpm="3000">3,000</button>
+                        <button class="btn btn-xs btn-chip" data-rpm="5000">5,000</button>
+                        <button class="btn btn-xs btn-chip" data-rpm="8000">8,000</button>
+                        <button class="btn btn-xs btn-chip" data-rpm="10000">10,000</button>
+                    </div>
+
+                    <!-- Range Slider -->
+                    <div class="slider-wrapper">
+                        <input type="range" id="slider-rpm" min="0" max="10000" step="50" value="3500">
+                    </div>
+                </div>
+
+                <!-- Timer Configuration -->
+                <div class="card timer-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-stopwatch"></i> Run Timer</h2>
+                        <div class="timer-countdown" id="timer-display">00:00</div>
+                    </div>
+
+                    <div class="timer-inputs">
+                        <div class="time-field">
+                            <label for="timer-min">Minutes</label>
+                            <input type="number" id="timer-min" min="0" max="120" value="3">
+                        </div>
+                        <div class="time-field">
+                            <label for="timer-sec">Seconds</label>
+                            <input type="number" id="timer-sec" min="0" max="59" value="0">
+                        </div>
+                        <div class="timer-presets">
+                            <button class="btn btn-xs btn-chip-timer" data-min="1">1m</button>
+                            <button class="btn btn-xs btn-chip-timer" data-min="3">3m</button>
+                            <button class="btn btn-xs btn-chip-timer" data-min="5">5m</button>
+                            <button class="btn btn-xs btn-chip-timer" data-min="10">10m</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions Panel -->
+                <div class="card actions-card">
+                    <div class="action-buttons-grid">
+                        <button id="btn-start" class="btn btn-success btn-action">
+                            <i class="fa-solid fa-play"></i> START
+                        </button>
+                        <button id="btn-pause" class="btn btn-warning btn-action" disabled>
+                            <i class="fa-solid fa-pause"></i> PAUSE
+                        </button>
+                        <button id="btn-stop" class="btn btn-secondary btn-action" disabled>
+                            <i class="fa-solid fa-square"></i> STOP
+                        </button>
+                    </div>
+
+                    <!-- Emergency Brake Button -->
+                    <button id="btn-estop" class="btn btn-danger btn-emergency">
+                        <i class="fa-solid fa-hand"></i> EMERGENCY BREAK
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <!-- System Activity Log Panel -->
+        <footer class="card log-card">
+            <div class="log-header">
+                <h3><i class="fa-solid fa-list-ol"></i> Activity & System Logs</h3>
+                <button id="btn-clear-logs" class="btn btn-xs btn-link"><i class="fa-solid fa-trash-can"></i> Clear</button>
+            </div>
+            <div class="log-console" id="log-console">
+                <div class="log-entry sys">[SYSTEM] Dashboard initialized. Select link mode to start telemetry.</div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="app.js"></script>
+</body>
+</html>
