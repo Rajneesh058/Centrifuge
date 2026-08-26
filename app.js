@@ -1,5 +1,5 @@
 /* -------------------------------------------------------------------
-   CENTRIFUGE PRO CONTROLLER - CORE JAVASCRIPT & DUAL ENGINE
+   CENTRIFUGE PRO CONTROLLER - CORE JAVASCRIPT & DUAL ENGINE + AUDIO CHIMES
    ------------------------------------------------------------------- */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -10,6 +10,9 @@ document.addEventListener('DOMContentLoaded', () => {
         usbConnected: false,
         wifiConnected: false,
         activeChannel: 'SIM',      // 'USB' | 'WIFI' | 'SIM'
+        
+        audioEnabled: true,        // Web Audio API Chimes toggle
+        audioCtx: null,
         
         lidClosed: true,           // Physical Lid Interlock State
         motorState: 'IDLE',        // 'IDLE' | 'RAMPING_UP' | 'RUNNING' | 'PAUSED' | 'RAMPING_DOWN' | 'ESTOP'
@@ -42,6 +45,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = {
         commModeSelect: document.getElementById('comm-mode'),
         btnConnect: document.getElementById('btn-connect'),
+        btnAudioToggle: document.getElementById('btn-audio-toggle'),
+        txtAudio: document.getElementById('txt-audio'),
+        
         pillConn: document.getElementById('pill-conn'),
         txtConn: document.getElementById('txt-conn'),
         
@@ -86,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
     bindEvents();
     updateUIState();
     startSimulationLoop();
-    logEvent('SYSTEM', 'Centrifuge Controller Initialized. Dual Wi-Fi + USB Serial Redundancy ready.');
+    logEvent('SYSTEM', 'Centrifuge Controller Initialized. Dual Wi-Fi + USB Serial + Piezo Audio feedback active.');
 
     // --- Canvas Setup & Responsive Scaling ---
     function initCanvas() {
@@ -100,6 +106,87 @@ document.addEventListener('DOMContentLoaded', () => {
         initCanvas();
     });
 
+    // --- Web Audio Synthesizer Tunes ---
+    function initAudioContext() {
+        if (!state.audioCtx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            state.audioCtx = new AudioContext();
+        }
+        if (state.audioCtx.state === 'suspended') {
+            state.audioCtx.resume();
+        }
+    }
+
+    function playToneNote(freq, startTime, duration, type = 'sine') {
+        if (!state.audioEnabled || !state.audioCtx) return;
+
+        const osc = state.audioCtx.createOscillator();
+        const gain = state.audioCtx.createGain();
+
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, startTime);
+
+        gain.gain.setValueAtTime(0.15, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+        osc.connect(gain);
+        gain.connect(state.audioCtx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+    }
+
+    function playAudioTune(tuneName) {
+        if (!state.audioEnabled) return;
+        initAudioContext();
+        if (!state.audioCtx) return;
+
+        const now = state.audioCtx.currentTime;
+
+        switch (tuneName) {
+            case 'START':
+                // Upward Arpeggio: C5 -> E5 -> G5 -> C6
+                playToneNote(523.25, now, 0.1, 'triangle');
+                playToneNote(659.25, now + 0.1, 0.1, 'triangle');
+                playToneNote(783.99, now + 0.2, 0.1, 'triangle');
+                playToneNote(1046.50, now + 0.3, 0.25, 'triangle');
+                break;
+
+            case 'PAUSE':
+                // Soft Descending Tones: G5 -> E5
+                playToneNote(783.99, now, 0.12, 'sine');
+                playToneNote(659.25, now + 0.13, 0.2, 'sine');
+                break;
+
+            case 'STOP':
+                // Fanfare Completion Tune: C5 -> G5 -> C6 -> E6
+                playToneNote(523.25, now, 0.1, 'triangle');
+                playToneNote(783.99, now + 0.11, 0.1, 'triangle');
+                playToneNote(1046.50, now + 0.22, 0.12, 'triangle');
+                playToneNote(1318.51, now + 0.35, 0.3, 'triangle');
+                break;
+
+            case 'ESTOP':
+                // High Pitch Emergency Alarm Siren
+                for (let i = 0; i < 4; i++) {
+                    playToneNote(2500, now + i * 0.12, 0.05, 'sawtooth');
+                    playToneNote(1800, now + i * 0.12 + 0.06, 0.05, 'sawtooth');
+                }
+                break;
+
+            case 'LID_WARN':
+                // Low Double Warning Beep
+                playToneNote(350, now, 0.12, 'square');
+                playToneNote(350, now + 0.18, 0.2, 'square');
+                break;
+
+            case 'STEP':
+                // Subtle Click Tone
+                playToneNote(880, now, 0.04, 'sine');
+                break;
+        }
+    }
+
     // --- Render RPM Graph ---
     function drawChart() {
         if (!canvasCtx || !el.canvas) return;
@@ -112,7 +199,6 @@ document.addEventListener('DOMContentLoaded', () => {
         canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
         canvasCtx.lineWidth = 1;
         
-        // Horizontal grid lines (0, 2500, 5000, 7500, 10000 RPM)
         for (let i = 0; i <= 4; i++) {
             const y = h - (i / 4) * (h - 20) - 10;
             canvasCtx.beginPath();
@@ -188,6 +274,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Handle Safety Lock override
         if (!state.lidClosed && state.motorState !== 'IDLE' && state.motorState !== 'ESTOP') {
             state.motorState = 'ESTOP';
+            playAudioTune('ESTOP');
             logEvent('WARN', 'SAFETY BREACH: Lid opened while motor was spinning! Hardware Interlock triggered.');
         }
 
@@ -210,6 +297,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (state.currentRPM > 0) {
                     state.currentRPM = Math.max(0, state.currentRPM - state.decelerationRate);
                 } else {
+                    if (state.motorState === 'RAMPING_DOWN') {
+                        playAudioTune('STOP'); // Completion sound on full stop
+                    }
                     state.motorState = 'IDLE';
                 }
                 break;
@@ -270,6 +360,12 @@ document.addEventListener('DOMContentLoaded', () => {
             el.badgeLid.className = 'badge danger';
             el.safetyBanner.classList.remove('hidden');
             el.safetyMsg.textContent = 'SAFETY INTERLOCK: Lid is OPEN. Motor power is HARDWARE DISABLED.';
+        }
+
+        // Audio Button Icon Update
+        if (el.txtAudio) {
+            el.txtAudio.textContent = state.audioEnabled ? 'Audio ON' : 'Audio OFF';
+            el.btnAudioToggle.querySelector('i').className = state.audioEnabled ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark';
         }
 
         // Connection Status Pill
@@ -334,6 +430,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     stopTimer();
                     logEvent('SUCCESS', 'Run timer expired! Initiating controlled ramp down.');
+                    playAudioTune('STOP');
                     stopMotor();
                 }
             }
@@ -358,17 +455,19 @@ document.addEventListener('DOMContentLoaded', () => {
         el.sliderRPM.value = num;
         el.targetRPMDisp.textContent = num;
 
-        // Send command to hardware via all available active channels
+        playAudioTune('STEP');
         sendCommand(`SETRPM:${num}`);
     }
 
     function startMotor() {
         if (!state.lidClosed) {
+            playAudioTune('LID_WARN');
             logEvent('ERR', 'Cannot start motor while Lid is OPEN!');
             return;
         }
 
         state.motorState = 'RAMPING_UP';
+        playAudioTune('START');
         logEvent('SYS', `Starting centrifuge... Ramping up to target ${state.targetRPM} RPM.`);
         startTimer();
         sendCommand('START');
@@ -376,6 +475,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function pauseMotor() {
         state.motorState = 'PAUSED';
+        playAudioTune('PAUSE');
         logEvent('WARN', 'Centrifuge PAUSED. Decelerating motor.');
         sendCommand('PAUSE');
     }
@@ -383,6 +483,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function stopMotor() {
         stopTimer();
         state.motorState = 'RAMPING_DOWN';
+        playAudioTune('STOP');
         logEvent('SYS', 'Stopping centrifuge... Controlled ramp down.');
         sendCommand('STOP');
     }
@@ -390,6 +491,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function triggerEmergencyBrake() {
         stopTimer();
         state.motorState = 'ESTOP';
+        playAudioTune('ESTOP');
         logEvent('ERR', 'EMERGENCY BRAKE ENGAGED! Immediate power cut & active braking.');
         sendCommand('ESTOP');
     }
@@ -400,7 +502,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let sent = false;
 
-        // 1. Send via USB Serial if connected
         if (state.usbConnected && state.serialPort) {
             try {
                 const encoder = new TextEncoder();
@@ -415,7 +516,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // 2. Send via Wi-Fi HTTP API if connected
         if (state.wifiConnected || state.commMode === 'dual' || state.commMode === 'ws') {
             fetch(`http://${state.espIP}/cmd?c=${encodeURIComponent(cmd)}`)
                 .then(res => res.json())
@@ -423,16 +523,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!sent) logEvent('SYS', `[TX Wi-Fi]: ${cmd}`);
                     parseTelemetryData(data);
                 })
-                .catch(err => {
-                    // Silent failover if USB handled it
-                });
+                .catch(() => {});
         }
     }
 
     // Dual Connection Trigger
     async function toggleDualConnections() {
         if (state.usbConnected || state.wifiConnected) {
-            // Disconnect all
             if (state.serialReader) await state.serialReader.cancel();
             if (state.serialPort) await state.serialPort.close();
             if (state.wifiPollInterval) clearInterval(state.wifiPollInterval);
@@ -447,7 +544,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         logEvent('SYS', 'Initiating Dual Link connection (USB + Wi-Fi)...');
 
-        // Try USB Serial connection
         if ('serial' in navigator) {
             try {
                 state.serialPort = await navigator.serial.requestPort();
@@ -460,12 +556,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Try Wi-Fi Polling connection
         startWiFiPolling();
         updateUIState();
     }
 
-    // Wi-Fi HTTP Polling for status & automatic failover
     function startWiFiPolling() {
         if (state.wifiPollInterval) clearInterval(state.wifiPollInterval);
 
@@ -520,7 +614,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function parseTelemetryString(dataStr) {
-        // Protocol format: "RPM:3450,LID:1,STATE:RUNNING"
         const parts = dataStr.split(',');
         parts.forEach(p => {
             const [key, val] = p.split(':');
@@ -553,6 +646,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- DOM Event Bindings ---
     function bindEvents() {
+        // Audio Toggle Button
+        if (el.btnAudioToggle) {
+            el.btnAudioToggle.addEventListener('click', () => {
+                state.audioEnabled = !state.audioEnabled;
+                if (state.audioEnabled) playAudioTune('START');
+                updateUIState();
+                logEvent('SYS', `Web Audio feedback set to: ${state.audioEnabled ? 'ON' : 'OFF'}`);
+            });
+        }
+
         // Communication mode switch
         el.commModeSelect.addEventListener('change', (e) => {
             state.commMode = e.target.value;
@@ -567,6 +670,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Lid simulator toggle
         el.btnLidToggleSim.addEventListener('click', () => {
             state.lidClosed = !state.lidClosed;
+            if (!state.lidClosed) playAudioTune('LID_WARN');
             updateUIState();
             logEvent('SYS', `Simulated Lid state changed: ${state.lidClosed ? 'CLOSED' : 'OPEN'}`);
         });

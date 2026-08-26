@@ -53,10 +53,22 @@ Here is what each part does in plain language:
 | **ESC Motor Driver** | Power Regulator | Translates low-voltage signals from the brain into high-power currents for the motor. |
 | **Optical Speed Sensor** | Tachometer / Speedometer | Counts how fast the rotor is actually spinning and shows live RPM on the screen. |
 | **Lid Limit Switch** | Physical Safety Lock | A mechanical lever switch on the lid. If the lid is open, it physically breaks the power circuit so no accidents can happen. |
+| **Piezo Audio Buzzer** | Sound Speaker / Alarm | Plays distinct audio tunes for Start, Pause, Stop completion, and Emergency Siren. |
 | **12V Power Adapter** | Wall Charger / Power Source | Provides 12 Volts of electricity to power the motor and electronics. |
 | **3D Printed Rotor** | Test Tube Holder | The plastic disc with angled holes that holds 4 to 6 micro-centrifuge tubes (1.5mL / 2mL). |
 
 ---
+
+## 🎵 Audio Chimes & Sound Tunes Guide
+
+The machine includes an audio buzzer (and web audio on your browser screen) that plays distinct musical tunes for every action:
+
+- 🚀 **START / RUN Tune**: Upward 4-note ascending chime (`C5 -> E5 -> G5 -> C6`).
+- ⏸️ **PAUSE Tune**: Two soft descending notes (`G5 -> E5`).
+- 🏁 **STOP / COMPLETION Fanfare**: A 4-note victory chime (`C5 -> G5 -> C6 -> E6`) when the run completes or finishes timer.
+- 🚨 **EMERGENCY BRAKE Alarm**: A rapid high-pitched siren beep sequence (`2500Hz / 1800Hz`).
+- ⚠️ **LID OPEN Warning**: Low double warning beep when starting with the lid open.
+
 
 ## 📡 4. Dual Communication (Wi-Fi + USB Cable) Explained
 

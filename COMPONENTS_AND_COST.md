@@ -15,8 +15,9 @@ This document provides a complete guide on components, alternative choices, budg
 | **5** | **Safety Switch** | Physical Lid Interlock switch | **Lever Micro Switch (NO/NC)** | Magnetic Reed Switch | ₹30 - ₹60 | $0.40 - $0.80 |
 | **6** | **Power Supply** | Powers motor and ESP32 electronics | **12V 5A DC Power Adapter / SMPS** | 3S 11.1V LiPo Battery (1500mAh+) | ₹450 - ₹700 | $5.50 - $8.50 |
 | **7** | **Physical Body & Rotor** | Holds micro-centrifuge tubes (1.5mL / 2mL) | **3D Printed PLA Rotor & Enclosure** (4-6 tube capacity) | Acrylic base + 3D printed rotor hub | ₹300 - ₹500 | $4.00 - $6.50 |
-| **8** | **Wiring & Accessories** | Connection wires, safety fuse, E-stop switch | Jumper wires, 10A fuse & holder, breadboard/perfboard | Screw terminal block, DC Jack | ₹150 - ₹250 | $2.00 - $3.00 |
-| **TOTAL** | | | **Complete Functional Centrifuge Rig** | | **₹2,040 - ₹3,030** | **$26.20 - $38.60** |
+| **8** | **Piezo Audio Buzzer** | Sound feedback tunes for Start, Pause, Stop, & Emergency Siren | **5V Active/Passive Piezo Buzzer** | 5V Small Speaker / Indicator LED | ₹20 - ₹40 | $0.30 - $0.50 |
+| **9** | **Wiring & Accessories** | Connection wires, safety fuse, E-stop switch | Jumper wires, 10A fuse & holder, breadboard/perfboard | Screw terminal block, DC Jack | ₹150 - ₹250 | $2.00 - $3.00 |
+| **TOTAL** | | | **Complete Functional Centrifuge Rig** | | **₹2,060 - ₹3,070** | **$26.50 - $39.10** |
 
 ---
 
@@ -26,7 +27,8 @@ This document provides a complete guide on components, alternative choices, budg
 - **ESC Signal (PWM)**: Connect to **GPIO 15** (Pulse width 1000µs - 2000µs at 50Hz).
 - **Lid Safety Switch**: Connect one pin to **GPIO 19**, other pin to **GND** (Internal Pull-Up enabled).
 - **RPM Tachometer Sensor**: Connect signal out pin to **GPIO 18** (Hardware Interrupt pin).
-- **Status LED / Buzzer (Optional)**: Connect to **GPIO 4**.
+- **Piezo Audio Buzzer**: Connect Positive (+) to **GPIO 27**, Negative (-) to **GND**.
+- **Status LED**: Connect to **GPIO 4**.
 - **Common GND**: Connect ESP32 GND, ESC Power GND, Power Supply GND together!
 
 ### Safety Hardware Interlock (Crucial!)

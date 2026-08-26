@@ -1,11 +1,12 @@
 /*
  * -------------------------------------------------------------------
- * CENTRIFUGE PRO CONTROLLER - ESP32 DUAL INTEGRATED FIRMWARE
+ * CENTRIFUGE PRO CONTROLLER - ESP32 DUAL INTEGRATED FIRMWARE + BUZZER
  * -------------------------------------------------------------------
  * Board: ESP32 Dev Module
  * IDE: Arduino IDE 1.8.x / 2.x
  * Features:
  *   - Dual Concurrent Communication: USB Serial (115200 baud) AND Wi-Fi TCP/HTTP WebSocket Server
+ *   - Distinct Piezo Buzzer Audio Tunes for START, PAUSE, STOP/COMPLETION, EMERGENCY BRAKE, and LID WARNING
  *   - Automatic Failover: Telemetry broadcast over BOTH channels simultaneously
  *   - Hardware Interlock: Physical Lid Limit Switch & Emergency Stop
  *   - Precision RPM Measurement: IR Optical Sensor Interrupt Handler
@@ -20,6 +21,7 @@ const int PIN_ESC_PWM      = 15; // ESC Control Output (PWM / Servo 1000us - 200
 const int PIN_TACH_SENSOR  = 18; // IR Optical / Tachometer Sensor Input (Interrupt)
 const int PIN_LID_SWITCH   = 19; // Lid Switch Safety Input (Active LOW when CLOSED)
 const int PIN_STATUS_LED   = 4;  // System Status Indicator LED
+const int PIN_BUZZER       = 27; // Piezo Buzzer Pin
 
 // --- Motor & ESC Parameters ---
 const int ESC_MIN_PULSE    = 1000; // 0% throttle (microseconds)
@@ -39,6 +41,7 @@ int targetRPM          = 3500;
 
 bool isLidClosed       = true;
 String systemState     = "IDLE"; // IDLE, RAMPING_UP, RUNNING, PAUSED, RAMPING_DOWN, ESTOP
+String previousState   = "IDLE";
 
 // Wi-Fi Access Point Settings
 const char* apSSID     = "ESP32-Centrifuge";
@@ -53,6 +56,60 @@ void IRAM_ATTR onTachPulse() {
   pulseCount++;
 }
 
+// --- Piezo Buzzer Audio Tunes ---
+void playBuzzerTone(int freq, int durationMs) {
+  tone(PIN_BUZZER, freq, durationMs);
+  delay(durationMs);
+  noTone(PIN_BUZZER);
+}
+
+void playStartTune() {
+  // Upward Melodic Arpeggio (C5 -> E5 -> G5 -> C6)
+  playBuzzerTone(523, 80);  // C5
+  delay(20);
+  playBuzzerTone(659, 80);  // E5
+  delay(20);
+  playBuzzerTone(784, 80);  // G5
+  delay(20);
+  playBuzzerTone(1047, 150); // C6
+}
+
+void playPauseTune() {
+  // Descending Soft Tones (G5 -> E5)
+  playBuzzerTone(784, 100); // G5
+  delay(30);
+  playBuzzerTone(659, 150); // E5
+}
+
+void playStopTune() {
+  // Completion Fanfare (C5 -> G5 -> C6 -> E6)
+  playBuzzerTone(523, 100); // C5
+  delay(30);
+  playBuzzerTone(784, 100); // G5
+  delay(30);
+  playBuzzerTone(1047, 120); // C6
+  delay(30);
+  playBuzzerTone(1319, 250); // E6
+}
+
+void playEmergencyTune() {
+  // Rapid High-Pitched Emergency Siren Alarm
+  for (int i = 0; i < 4; i++) {
+    tone(PIN_BUZZER, 2500, 60);
+    delay(60);
+    tone(PIN_BUZZER, 1800, 60);
+    delay(60);
+  }
+  noTone(PIN_BUZZER);
+}
+
+void playLidWarningTune() {
+  // Low Double Warning Beep
+  playBuzzerTone(350, 120);
+  delay(50);
+  playBuzzerTone(350, 180);
+}
+
 void setup() {
   // 1. Initialize USB Serial Communication (115200 Baud)
   Serial.begin(115200);
@@ -61,6 +118,7 @@ void setup() {
   pinMode(PIN_LID_SWITCH, INPUT_PULLUP);
   pinMode(PIN_TACH_SENSOR, INPUT_PULLUP);
   pinMode(PIN_STATUS_LED, OUTPUT);
+  pinMode(PIN_BUZZER, OUTPUT);
 
   // 3. Attach Hardware Interrupt for Optical Sensor
   attachInterrupt(digitalPinToInterrupt(PIN_TACH_SENSOR), onTachPulse, RISING);
@@ -72,7 +130,10 @@ void setup() {
   
   // Arm ESC (Send minimum pulse for 2 seconds)
   escMotor.writeMicroseconds(ESC_MIN_PULSE);
-  delay(2000);
+  delay(1500);
+
+  // Startup Chime
+  playStartTune();
 
   // 5. Start Dual Wi-Fi Access Point
   WiFi.softAP(apSSID, apPassword);
@@ -80,24 +141,30 @@ void setup() {
   wifiServer.begin();
 
   Serial.println("==================================================");
-  Serial.println("ESP32 Centrifuge Controller - Dual Mode Ready");
+  Serial.println("ESP32 Centrifuge Controller - Dual Mode + Audio Ready");
   Serial.println("Channel 1: USB Serial @ 115200 Baud");
   Serial.print("Channel 2: Wi-Fi Access Point: "); Serial.println(apSSID);
   Serial.print("Channel 2 IP Address: http://"); Serial.println(apIP);
-  Serial.println("Dual Channel Redundancy Active (Concurrent USB + Wi-Fi)");
+  Serial.println("Buzzer Pin Assigned: GPIO 27");
   Serial.println("==================================================");
 }
 
 void loop() {
   // --- 1. Hardware Lid Safety Check ---
-  isLidClosed = (digitalRead(PIN_LID_SWITCH) == LOW);
+  bool currentLidState = (digitalRead(PIN_LID_SWITCH) == LOW);
 
-  // Hard physical safety override (Immediate motor power cut if lid is opened while spinning)
-  if (!isLidClosed && systemState != "IDLE" && systemState != "ESTOP") {
-    systemState = "ESTOP";
-    targetPulseWidth = ESC_MIN_PULSE;
-    currentPulseWidth = ESC_MIN_PULSE;
-    escMotor.writeMicroseconds(ESC_MIN_PULSE);
+  if (isLidClosed && !currentLidState) {
+    // Lid opened!
+    isLidClosed = false;
+    if (systemState != "IDLE" && systemState != "ESTOP") {
+      systemState = "ESTOP";
+      targetPulseWidth = ESC_MIN_PULSE;
+      currentPulseWidth = ESC_MIN_PULSE;
+      escMotor.writeMicroseconds(ESC_MIN_PULSE);
+      playLidWarningTune();
+    }
+  } else {
+    isLidClosed = currentLidState;
   }
 
   // --- 2. Process Commands from USB Serial ---
@@ -179,17 +246,22 @@ void updateMotorSpeed() {
   // Ramp pulse width smoothly (Soft Start)
   if (currentPulseWidth < targetPulseWidth) {
     currentPulseWidth = min(targetPulseWidth, currentPulseWidth + 10);
-    if (currentPulseWidth == targetPulseWidth) systemState = "RUNNING";
+    if (currentPulseWidth == targetPulseWidth && systemState != "RUNNING") {
+      systemState = "RUNNING";
+    }
   } else if (currentPulseWidth > targetPulseWidth) {
     currentPulseWidth = max(targetPulseWidth, currentPulseWidth - 15);
-    if (currentPulseWidth == ESC_MIN_PULSE) systemState = "IDLE";
+    if (currentPulseWidth == ESC_MIN_PULSE && systemState == "RAMPING_DOWN") {
+      systemState = "IDLE";
+      playStopTune(); // Play completion chime when motor reaches full stop
+    }
   }
 
   escMotor.writeMicroseconds(currentPulseWidth);
   digitalWrite(PIN_STATUS_LED, (systemState == "RUNNING") ? HIGH : LOW);
 }
 
-// --- Unified Command Parser ---
+// --- Unified Command Parser with Audio Tunes ---
 void parseCommand(String cmd, String source) {
   cmd.trim();
   cmd.toUpperCase();
@@ -197,18 +269,25 @@ void parseCommand(String cmd, String source) {
   if (cmd == "START") {
     if (isLidClosed) {
       systemState = "RAMPING_UP";
+      playStartTune();
+    } else {
+      playLidWarningTune();
     }
   } else if (cmd == "PAUSE") {
     systemState = "PAUSED";
+    playPauseTune();
   } else if (cmd == "STOP") {
     systemState = "RAMPING_DOWN";
+    playStopTune();
   } else if (cmd == "ESTOP") {
     systemState = "ESTOP";
     currentPulseWidth = ESC_MIN_PULSE;
     escMotor.writeMicroseconds(ESC_MIN_PULSE);
+    playEmergencyTune();
   } else if (cmd.startsWith("SETRPM:")) {
     int val = cmd.substring(7).toInt();
     targetRPM = constrain(val, 0, MAX_RPM);
+    playBuzzerTone(880, 50); // Subtle 880Hz click tune on speed change
   }
 }
 
