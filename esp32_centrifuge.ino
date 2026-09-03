@@ -14,21 +14,17 @@
 #include <WiFi.h>
 #include <ESP32Servo.h>
 #include "BluetoothSerial.h"
-
 BluetoothSerial SerialBT;
-
 // --- Pin Assignments ---
 const int PIN_ESC_PWM      = 15; // ESC Control Output (PWM / Servo 1000us - 2000us)
 const int PIN_TACH_SENSOR  = 18; // IR Optical / Tachometer Sensor Input (Interrupt)
 const int PIN_LID_SWITCH   = 19; // Lid Switch Safety Input (Active LOW when CLOSED)
 const int PIN_STATUS_LED   = 4;  // System Status Indicator LED
 const int PIN_BUZZER       = 27; // Piezo Buzzer Pin
-
 // --- Motor & ESC Parameters ---
 const int ESC_MIN_PULSE    = 1000; // 0% throttle (microseconds)
 const int ESC_MAX_PULSE    = 2000; // 100% throttle (microseconds)
 const int MAX_RPM          = 10000;
-
 // --- Global Variables ---
 Servo escMotor;
 
@@ -43,7 +39,6 @@ int targetRPM          = 3500;
 bool isLidClosed       = true;
 String systemState     = "IDLE";
 String previousState   = "IDLE";
-
 // Wi-Fi Access Point Settings
 const char* apSSID     = "ESP32-Centrifuge";
 const char* apPassword = "centrifuge123";
@@ -54,13 +49,11 @@ WiFiClient currentClient;
 void IRAM_ATTR onTachPulse() {
   pulseCount++;
 }
-
 void playBuzzerTone(int freq, int durationMs) {
   tone(PIN_BUZZER, freq, durationMs);
   delay(durationMs);
   noTone(PIN_BUZZER);
 }
-
 void playStartTune() {
   playBuzzerTone(523, 80);
   delay(20);
@@ -70,13 +63,11 @@ void playStartTune() {
   delay(20);
   playBuzzerTone(1047, 150);
 }
-
 void playPauseTune() {
   playBuzzerTone(784, 100);
   delay(30);
   playBuzzerTone(659, 150);
 }
-
 void playStopTune() {
   playBuzzerTone(523, 100);
   delay(30);
@@ -86,7 +77,6 @@ void playStopTune() {
   delay(30);
   playBuzzerTone(1319, 250);
 }
-
 void playEmergencyTune() {
   for (int i = 0; i < 4; i++) {
     tone(PIN_BUZZER, 2500, 60);
@@ -102,21 +92,17 @@ void playLidWarningTune() {
   delay(50);
   playBuzzerTone(350, 180);
 }
-
 void setup() {
   // 1. Initialize USB Serial & Bluetooth Serial
   Serial.begin(115200);
   SerialBT.begin("ESP32-Centrifuge-BT");
-
   // 2. Configure Pin Modes
   pinMode(PIN_LID_SWITCH, INPUT_PULLUP);
   pinMode(PIN_TACH_SENSOR, INPUT_PULLUP);
   pinMode(PIN_STATUS_LED, OUTPUT);
   pinMode(PIN_BUZZER, OUTPUT);
-
   // 3. Attach Hardware Interrupt for Optical Sensor
   attachInterrupt(digitalPinToInterrupt(PIN_TACH_SENSOR), onTachPulse, RISING);
-
   // 4. Attach ESC Servo PWM
   ESP32PWM::allocateTimer(0);
   escMotor.setPeriodHertz(50);
@@ -139,7 +125,6 @@ void setup() {
   Serial.println("Channel 3: Bluetooth Device: ESP32-Centrifuge-BT");
   Serial.println("==================================================");
 }
-
 void loop() {
   // 1. Hardware Lid Safety Check
   bool currentLidState = (digitalRead(PIN_LID_SWITCH) == LOW);
@@ -156,7 +141,6 @@ void loop() {
   } else {
     isLidClosed = currentLidState;
   }
-
   // 2. Process USB Serial Commands
   if (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');
@@ -165,7 +149,6 @@ void loop() {
       parseCommand(cmd, "USB_SERIAL");
     }
   }
-
   // 3. Process Bluetooth Commands
   if (SerialBT.available()) {
     String btCmd = SerialBT.readStringUntil('\n');
@@ -174,7 +157,6 @@ void loop() {
       parseCommand(btCmd, "BLUETOOTH");
     }
   }
-
   // 4. Process Wi-Fi Server Commands & Telemetry
   WiFiClient client = wifiServer.available();
   if (client) {
@@ -222,7 +204,6 @@ void loop() {
 
   delay(20);
 }
-
 void updateMotorSpeed() {
   if (systemState == "ESTOP") {
     currentPulseWidth = ESC_MIN_PULSE;
@@ -230,13 +211,11 @@ void updateMotorSpeed() {
     digitalWrite(PIN_STATUS_LED, (millis() / 200) % 2);
     return;
   }
-
   if (systemState == "RAMPING_UP" || systemState == "RUNNING") {
     targetPulseWidth = map(targetRPM, 0, MAX_RPM, ESC_MIN_PULSE, ESC_MAX_PULSE);
   } else {
     targetPulseWidth = ESC_MIN_PULSE;
   }
-
   if (currentPulseWidth < targetPulseWidth) {
     currentPulseWidth = min(targetPulseWidth, currentPulseWidth + 10);
     if (currentPulseWidth == targetPulseWidth && systemState != "RUNNING") {
@@ -249,7 +228,6 @@ void updateMotorSpeed() {
       playStopTune();
     }
   }
-
   escMotor.writeMicroseconds(currentPulseWidth);
   digitalWrite(PIN_STATUS_LED, (systemState == "RUNNING") ? HIGH : LOW);
 }
@@ -282,7 +260,6 @@ void parseCommand(String cmd, String source) {
     playBuzzerTone(880, 50);
   }
 }
-
 void sendDualTelemetry() {
   // USB Serial
   Serial.print("RPM:");
@@ -291,7 +268,6 @@ void sendDualTelemetry() {
   Serial.print(isLidClosed ? 1 : 0);
   Serial.print(",STATE:");
   Serial.println(systemState);
-
   // Bluetooth Serial
   if (SerialBT.hasClient()) {
     SerialBT.print("RPM:");
